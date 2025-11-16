@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Highlight & Export Tool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- CKEditor 5 CDN -->
+    <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
+    <style>
+        :root {
+            --background: #f8f9fa;
+            --surface: #ffffff;
+            --primary: #4a90e2;
+            --primary-hover: #357abd;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --border-color: #dee2e6;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            --highlight-bg: #fff3cd;
+            --danger: #dc3545;
+            --danger-hover: #c82333;
+        }
+
+        /* General Styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            background-color: var(--background);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Main Container for the panes */
+        .main-container {
+            display: flex;
+            flex-grow: 1;
+            padding: 1rem;
+            gap: 1rem;
+            overflow: hidden; /* Prevent container from overflowing */
+        }
+
+        /* Styling for each pane (Editor and Preview) */
+        .pane {
+            display: flex;
+            flex-direction: column;
+            background-color: var(--surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            flex: 1; /* Let panes share space equally */
+            min-width: 0; /* Prevent flex items from overflowing their container */
+            transition: all 0.3s ease; /* Smooth transition for resizing */
+        }
+        
+        /* Class to hide the editor pane */
+        .pane.hidden {
+            display: none;
+        }
+
+        .pane-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            background-color: #f8f9fa;
+            color: var(--text-secondary);
+        }
+
+        /* Smaller button inside the header */
+        .header-btn {
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            background-color: var(--text-secondary);
+        }
+        .header-btn:hover {
+             background-color: #5a6268;
+        }
+
+        /* New styles for Clear button */
+        .header-btn.clear-btn {
+             background-color: var(--danger); /* Danger red */
+        }
+        .header-btn.clear-btn:hover {
+            background-color: var(--danger-hover);
+        }
+
+
+        /* Styles for the floating show button */
+        .show-toggle-btn {
+            position: fixed;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            width: 30px;
+            height: 100px;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            border-top-right-radius: 8px;
+            border-bottom-right-radius: 8px;
+            background-color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+            border: none; /* remove default button border */
+        }
+         .show-toggle-btn:hover {
+            background-color: var(--primary-hover);
+            width: 35px; /* Slightly expand on hover */
+        }
+        .show-toggle-btn.hidden {
+            display: none;
+        }
+
+        /* Styles for the highlight tooltip button */
+        #highlight-tooltip {
+            position: fixed; /* Use fixed so it's relative to the main viewport */
+            z-index: 1001;
+            background-color: var(--primary);
+            color: white;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            line-height: 1; /* Set line-height to 1 */
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: transform 0.1s ease, opacity 0.1s ease;
+            opacity: 0;
+            transform: scale(0.8);
+            pointer-events: none; /* Cant be clicked when hidden */
+            box-sizing: border-box; /* Ensure padding is included in dimensions */
+            padding: 0; /* Reset padding */
+            padding-bottom: 2px; /* Optical nudge for the '+' sign */
+        }
+        #highlight-tooltip.visible {
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: auto; /* Can be clicked when visible */
+        }
+
+
+        /* CKEditor Styling */
+        .pane > .ck.ck-editor {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            border: none;
+            box-shadow: none;
+            overflow: hidden; 
+        }
+        .ck.ck-editor__main {
+            flex-grow: 1;
+            overflow-y: auto; /* This enables scrolling within the editor area */
+        }
+        .ck.ck-editor__editable {
+            flex-grow: 1;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        
+        #preview-frame {
+            border: none;
+            width: 100%;
+            flex-grow: 1;
+        }
+        
+        /* Controls and Buttons */
+        .preview-controls {
+            padding: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            background-color: #f8f9fa;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        /* Highlights Section below the panes */
+        #replies-pane .highlights-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        
+        #highlights-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .highlight-item {
+            background-color: var(--highlight-bg);
+            border: 1px solid #ffeeba;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            font-size: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        /* Color variants for highlight items */
+        .highlight-item.color-yellow { background-color: #fff3cd; border-color: #ffeeba; }
+        .highlight-item.color-green  { background-color: #d4edda; border-color: #c3e6cb; }
+        .highlight-item.color-blue   { background-color: #d1ecf1; border-color: #bee5eb; }
+        .highlight-item.color-pink   { background-color: #f8d7da; border-color: #f5c6cb; }
+        .highlight-item.color-purple { background-color: #ede6ff; border-color: #dacfef; }
+        
+        .highlight-text {
+            font-style: italic;
+            color: #545454;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px dashed #f0e68c;
+        }
+
+        .highlight-button-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 0.75rem;
+        }
+        /* Color picker UI */
+        .color-picker { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+        .color-label { font-size: 12px; color: #6c757d; margin-right: 4px; }
+        .color-dot {
+            width: 16px; height: 16px; border-radius: 50%;
+            border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.15);
+            cursor: pointer; outline: none; padding: 0; background: transparent;
+        }
+        .color-dot.yellow { background: #ffe08a; }
+        .color-dot.green  { background: #a8e5b2; }
+        .color-dot.blue   { background: #9ee3f0; }
+        .color-dot.pink   { background: #f6a5af; }
+        .color-dot.purple { background: #c9b4ff; }
+        .color-dot.selected { box-shadow: 0 0 0 2px rgba(0,0,0,0.25); }
+        
+        .highlight-action-btn {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .highlight-action-btn:hover {
+            background-color: #5a6268;
+        }
+
+        .highlight-action-btn.translate-btn {
+             background-color: #28a745;
+        }
+        .highlight-action-btn.translate-btn:hover {
+            background-color: #218838;
+        }
+        /* New style for active translate button */
+        .highlight-action-btn.translate-btn.active {
+            background-color: #1a6b30; /* Darker green */
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .highlight-action-btn.copy-btn {
+             background-color: #17a2b8;
+        }
+        .highlight-action-btn.copy-btn:hover {
+            background-color: #138496;
+        }
+        
+        /* New Delete Button Style */
+        .highlight-action-btn.delete-btn {
+            background-color: var(--danger);
+            margin-left: auto; /* Pushes delete button to the right */
+        }
+        .highlight-action-btn.delete-btn:hover {
+            background-color: var(--danger-hover);
+        }
+        
+        .reply-input {
+            display: none;
+            width: 100%;
+            /* margin-top: 0.75rem; */ /* No longer needed */
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .reply-display {
+            background-color: #e9ecef;
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            margin-top: 0.75rem;
+            font-size: 14px;
+            color: var(--text-primary);
+            border-left: 3px solid var(--primary);
+            white-space: pre-wrap; 
+            word-wrap: break-word; 
+        }
+        
+        /* New class for editable replies */
+        .reply-display.editable-reply {
+            cursor: pointer;
+        }
+        .reply-display.editable-reply:hover {
+            background-color: #dbe2e9; /* Slight hover effect to show it's editable */
+        }
+
+        .export-area {
+            padding: 1rem;
+            text-align: center;
+            background-color: #f8f9fa;
+            border-top: 1px solid var(--border-color);
+            display: flex; /* Added */
+            justify-content: center; /* Added */
+            align-items: center; /* Added */
+            gap: 10px; /* Added */
+        }
+
+        @media (max-width: 800px) {
+            .main-container {
+                flex-direction: column;
+                flex-grow: 1;
+            }
+            .pane {
+                width: 100%;
+                flex: 1;
+                min-height: 250px; 
+            }
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background-color: var(--surface);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 90%;
+            width: 400px;
+            transform: scale(0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .modal-overlay.visible .modal-content {
+            transform: scale(1);
+        }
+
+        #modal-text {
+            margin: 0 0 1.5rem 0;
+            font-size: 16px;
+            color: var(--text-primary);
+        }
+        
+        /* New styles for modal buttons */
+        .modal-content button {
+            margin: 0 5px;
+        }
+
+        #modal-cancel-btn {
+            background-color: var(--text-secondary);
+        }
+        #modal-cancel-btn:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    
+    <!-- Floating button to show the editor when it's hidden -->
+    <button id="show-editor-btn" class="show-toggle-btn hidden">&raquo;</button>
+
+    <!-- Tooltip button that appears on text selection -->
+    <button id="highlight-tooltip">+</button>
+
+    <!-- Main three-pane layout -->
+    <div class="main-container">
+        <div class="pane" id="editor-pane">
+            <div class="pane-header">
+                <span>Content Editor</span>
+                <button id="toggle-editor-btn" class="header-btn">Hide</button>
+            </div>
+            <div id="html-editor"></div>
+        </div>
+
+        <div class="pane">
+            <div class="pane-header">
+                <span>Preview</span>
+                <button id="copy-preview-btn" class="header-btn">Copy</button>
+            </div>
+            <iframe id="preview-frame"></iframe>
+            <div class="preview-controls">
+                <button id="append-btn">Append Highlighted Text</button>
+            </div>
+        </div>
+
+        <div class="pane" id="replies-pane">
+            <div class="pane-header">
+                <span>Highlights & Replies</span>
+                <!-- New Clear Button -->
+                <button id="clear-highlights-btn" class="header-btn clear-btn">Clear</button>
+            </div>
+            <div class="highlights-content">
+                <ul id="highlights-list">
+                </ul>
+            </div>
+            <div class="export-area">
+                <button id="export-btn">Export with Replies</button>
+                <!-- New Copy Export Button -->
+                <button id="copy-export-btn" class="highlight-action-btn copy-btn" style="padding: 12px 20px; font-size: 15px; font-weight: 600;">Copy to Clipboard</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Modal for Alerts -->
+    <div id="custom-modal" class="modal-overlay">
+        <div class="modal-content">
+            <p id="modal-text"></p>
+            <button id="modal-close-btn">OK</button>
+            <!-- New Cancel Button for confirmation -->
+            <button id="modal-cancel-btn" style="display: none;">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        const previewFrame = document.getElementById('preview-frame');
+        const appendBtn = document.getElementById('append-btn');
+        const highlightsList = document.getElementById('highlights-list');
+        const exportBtn = document.getElementById('export-btn');
+        const copyExportBtn = document.getElementById('copy-export-btn'); // New button
+        const STORAGE_KEY = 'text_comment_state_v1';
+        const EDITOR_KEY = 'text_comment_editor_html_v1';
+        let isRestoring = false;
+
+        const toggleEditorBtn = document.getElementById('toggle-editor-btn');
+        const editorPane = document.getElementById('editor-pane');
+        const showEditorBtn = document.getElementById('show-editor-btn');
+        
+        const tooltip = document.getElementById('highlight-tooltip');
+        
+        const copyPreviewBtn = document.getElementById('copy-preview-btn');
+
+        const modal = document.getElementById('custom-modal');
+        const modalText = document.getElementById('modal-text');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        
+        // --- New elements for Clear/Confirm ---
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+        const clearHighlightsBtn = document.getElementById('clear-highlights-btn');
+        let onModalConfirm = null; // State for confirmation callback
+        
+        let classicEditor; 
+
+        // --- Persistence Helpers ---
+        function collectState() {
+            const items = [];
+            const nodes = highlightsList.querySelectorAll('.highlight-item');
+            nodes.forEach(node => {
+                const textEl = node.querySelector('.highlight-text');
+                if (!textEl) return;
+                let text = textEl.textContent || '';
+                if (text.startsWith('"') && text.endsWith('"')) text = text.slice(1, -1);
+                let color = node.getAttribute('data-color') || 'yellow';
+                const colorClass = Array.from(node.classList).find(c => c.startsWith('color-'));
+                if (colorClass) color = colorClass.replace('color-', '');
+                const replies = Array.from(node.querySelectorAll('.reply-display'))
+                    .filter(el => !el.classList.contains('translate-reply-th') && !el.classList.contains('translate-reply-en'))
+                    .map(el => el.textContent || '');
+                const id = node.dataset.hid || null;
+                items.push({ id, text, color, replies });
+            });
+            return { v: 1, items };
+        }
+
+        function saveState() {
+            if (isRestoring) return;
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState()));
+            } catch (e) {
+                console.warn('Failed to save state', e);
+            }
+        }
+
+        function loadState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                if (!obj || !Array.isArray(obj.items)) return null;
+                return obj.items;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // --- Toggle Editor Functionality ---
+        toggleEditorBtn.addEventListener('click', () => {
+            editorPane.classList.add('hidden');
+            showEditorBtn.classList.remove('hidden');
+        });
+        showEditorBtn.addEventListener('click', () => {
+            editorPane.classList.remove('hidden');
+            showEditorBtn.classList.add('hidden');
+        });
+
+        // --- Modal Functions (Updated) ---
+        const showModal = (message, confirmCallback = null) => {
+            modalText.textContent = message;
+            modal.classList.add('visible');
+
+            if (confirmCallback) {
+                // Setup for confirmation
+                modalCancelBtn.style.display = 'inline-block';
+                modalCloseBtn.innerText = 'Confirm';
+                onModalConfirm = confirmCallback;
+            } else {
+                // Setup for simple alert
+                modalCancelBtn.style.display = 'none';
+                modalCloseBtn.innerText = 'OK';
+                onModalConfirm = null;
+            }
+        }
+        const closeModal = () => {
+            modal.classList.remove('visible');
+            onModalConfirm = null; // Always clear confirm on close
+        }
+        
+        // Updated "OK/Confirm" button listener
+        modalCloseBtn.addEventListener('click', () => {
+            if (onModalConfirm) {
+                onModalConfirm(); // Execute the callback if it exists
+            }
+            closeModal();
+        });
+        
+        // New "Cancel" button listener
+        modalCancelBtn.addEventListener('click', closeModal);
+        
+        // Modal background click
+        modal.addEventListener('click', (e) => (e.target === modal) && closeModal());
+
+
+        // --- New Function: Handle Reply Edit ---
+        function saveReplyEdit(e, originalReplyElement) {
+            const editInput = e.currentTarget;
+            const newText = editInput.value.trim();
+            
+            if (newText) {
+                originalReplyElement.textContent = newText;
+                editInput.parentNode.replaceChild(originalReplyElement, editInput);
+            } else {
+                // If text is empty, remove the reply
+                originalReplyElement.remove();
+                editInput.remove();
+            }
+        }
+
+        function handleReplyDblClick(e) {
+            const replyElement = e.currentTarget;
+            if (!replyElement.classList.contains('editable-reply')) return; // Only edit editable replies
+
+            const currentText = replyElement.textContent;
+            
+            const editInput = document.createElement('textarea');
+            editInput.className = 'reply-input';
+            editInput.style.display = 'block';
+            editInput.value = currentText;
+            editInput.rows = 2;
+
+            replyElement.parentNode.replaceChild(editInput, replyElement);
+            editInput.focus();
+
+            // Add listeners to save
+            editInput.addEventListener('blur', (event) => { saveReplyEdit(event, replyElement); saveState(); });
+            editInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    saveReplyEdit(event, replyElement);
+                    saveState();
+                }
+            });
+        }
+
+        // --- Preview Highlight Helpers ---
+        function generateId() {
+            return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8);
+        }
+
+        function ensurePreviewStyles(doc) {
+            if (!doc.getElementById('mark-highlight-style')) {
+                const style = doc.createElement('style');
+                style.id = 'mark-highlight-style';
+                style.textContent = `
+                .mark-highlight{ border-radius:2px; padding:0 2px; }
+                .mark-highlight.color-yellow{ background:#fff3cd; box-shadow: inset 0 0 0 1px #ffeeba }
+                .mark-highlight.color-green{ background:#d4edda; box-shadow: inset 0 0 0 1px #c3e6cb }
+                .mark-highlight.color-blue{ background:#d1ecf1; box-shadow: inset 0 0 0 1px #bee5eb }
+                .mark-highlight.color-pink{ background:#f8d7da; box-shadow: inset 0 0 0 1px #f5c6cb }
+                .mark-highlight.color-purple{ background:#ede6ff; box-shadow: inset 0 0 0 1px #dacfef }
+                `;
+                doc.head.appendChild(style);
+            }
+        }
+
+        function wrapCurrentPreviewSelection(hid, color) {
+            const win = previewFrame.contentWindow;
+            if (!win) return;
+            const sel = win.getSelection();
+            if (!sel || sel.rangeCount === 0) return;
+            const range = sel.getRangeAt(0);
+            if (range.collapsed) return;
+            const doc = win.document;
+            ensurePreviewStyles(doc);
+            const wrapper = doc.createElement('span');
+            wrapper.className = `mark-highlight color-${color}`;
+            wrapper.setAttribute('data-hid', hid);
+            const contents = range.extractContents();
+            wrapper.appendChild(contents);
+            range.insertNode(wrapper);
+            sel.removeAllRanges();
+        }
+
+        function updatePreviewHighlightColor(hid, color){
+            const doc = previewFrame.contentWindow?.document;
+            if (!doc) return;
+            const nodes = doc.querySelectorAll(`span.mark-highlight[data-hid="${hid}"]`);
+            nodes.forEach(node => {
+                node.classList.remove('color-yellow','color-green','color-blue','color-pink','color-purple');
+                node.classList.add(`color-${color}`);
+            });
+        }
+
+        function removePreviewHighlight(hid){
+            const doc = previewFrame.contentWindow?.document;
+            if (!doc) return;
+            const nodes = Array.from(doc.querySelectorAll(`span.mark-highlight[data-hid="${hid}"]`));
+            nodes.forEach(span => {
+                const parent = span.parentNode;
+                while (span.firstChild) parent.insertBefore(span.firstChild, span);
+                parent.removeChild(span);
+                parent.normalize?.();
+            });
+        }
+
+        function highlightFirstMatch(text, hid, color){
+            const doc = previewFrame.contentWindow?.document;
+            if (!doc || !text) return false;
+            ensurePreviewStyles(doc);
+            const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+                acceptNode(node){
+                    if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+                    if (node.parentElement && node.parentElement.closest('.mark-highlight')) return NodeFilter.FILTER_REJECT;
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            });
+            while (walker.nextNode()){
+                const node = walker.currentNode;
+                const idx = node.nodeValue.indexOf(text);
+                if (idx !== -1){
+                    const range = doc.createRange();
+                    range.setStart(node, idx);
+                    range.setEnd(node, idx + text.length);
+                    const wrapper = doc.createElement('span');
+                    wrapper.className = `mark-highlight color-${color}`;
+                    wrapper.setAttribute('data-hid', hid);
+                    range.surroundContents(wrapper);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function applySavedHighlightsToPreview(){
+            const items = loadState() || [];
+            if (!items.length) return;
+            items.forEach(item => {
+                const hid = item.id || generateId();
+                highlightFirstMatch(item.text, hid, item.color || 'yellow');
+            });
+        }
+
+
+        // --- Core App Functions ---
+
+        const addHighlightToList = (selectedText, options = {}) => {
+            const listItem = document.createElement('li');
+            listItem.className = 'highlight-item color-yellow'; // default color
+            const hid = options.id || generateId();
+            listItem.dataset.hid = hid;
+
+            const textElement = document.createElement('div');
+            textElement.className = 'highlight-text';
+            textElement.textContent = `"${selectedText}"`;
+            
+            // --- New Button Container ---
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'highlight-button-container';
+
+            // --- Reply Input & Container (created early) ---
+            const replyInput = document.createElement('textarea');
+            replyInput.className = 'reply-input';
+            replyInput.placeholder = 'Type your question... (Enter to submit)';
+            replyInput.rows = 2;
+            
+            const repliesContainer = document.createElement('div');
+            repliesContainer.className = 'replies-container';
+
+            // --- 1. Question Button (Replaces Reply) --- [FIXED: Added this block back]
+            const questionButton = document.createElement('button');
+            questionButton.className = 'highlight-action-btn';
+            questionButton.innerHTML = `<span>&#43;</span> Question?`;
+            questionButton.addEventListener('click', () => {
+                const isVisible = replyInput.style.display === 'block';
+                replyInput.style.display = isVisible ? 'none' : 'block';
+                if (!isVisible) replyInput.focus();
+            });
+
+            // --- 2. Translate Button (New - Toggle Logic) ---
+            const translateButton = document.createElement('button');
+            translateButton.className = 'highlight-action-btn translate-btn';
+            translateButton.innerHTML = `<span>&#127758;</span> Translate`; // Globe emoji
+            translateButton.addEventListener('click', () => {
+                
+                // Check if the button is already active
+                if (translateButton.classList.contains('active')) {
+                    // --- INACTIVE (Remove) ---
+                    const thaiReply = listItem.querySelector('.translate-reply-th');
+                    const engReply = listItem.querySelector('.translate-reply-en');
+                    
+                    if (thaiReply) thaiReply.remove();
+                    if (engReply) engReply.remove();
+                    
+                    translateButton.classList.remove('active');
+
+                } else {
+                    // --- ACTIVE (Add) ---
+                    const thaiReply = document.createElement('div');
+                    thaiReply.className = 'reply-display translate-reply-th'; // Not editable, but identifiable
+                    thaiReply.textContent = 'แปลคำนี้ เป็นภาษาไทย';
+                    repliesContainer.appendChild(thaiReply);
+
+                    const engReply = document.createElement('div');
+                    engReply.className = 'reply-display translate-reply-en'; // Not editable, but identifiable
+                    engReply.textContent = 'แปลคำนี้ เป็นภาษาอังกฤษ';
+                    repliesContainer.appendChild(engReply);
+                    
+                    translateButton.classList.add('active');
+                }
+
+                replyInput.style.display = 'none'; // Hide input if open
+            });
+
+            // --- 3. Delete Button (New) ---
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'highlight-action-btn delete-btn';
+            deleteButton.innerHTML = `<span>&#128465;</span>`; // Trash can emoji
+            deleteButton.addEventListener('click', () => {
+                showModal('Are you sure you want to delete this item?', () => {
+                    listItem.remove();
+                    removePreviewHighlight(hid);
+                    saveState();
+                });
+            });
+
+            // --- 4. Color Picker (New) ---
+            const colors = ['yellow', 'green', 'blue', 'pink', 'purple'];
+            const colorPicker = document.createElement('div');
+            colorPicker.className = 'color-picker';
+            const colorLabel = document.createElement('span');
+            colorLabel.className = 'color-label';
+            colorLabel.textContent = 'Color:';
+            colorPicker.appendChild(colorLabel);
+
+            const applyColor = (color) => {
+                // Remove existing color-* classes
+                listItem.classList.remove('color-yellow', 'color-green', 'color-blue', 'color-pink', 'color-purple');
+                listItem.classList.add(`color-${color}`);
+                // Update selected state
+                Array.from(colorPicker.querySelectorAll('.color-dot')).forEach(dot => dot.classList.remove('selected'));
+                const currentDot = colorPicker.querySelector(`.color-dot.${color}`);
+                if (currentDot) currentDot.classList.add('selected');
+                // Persist chosen color as attribute (optional)
+                listItem.setAttribute('data-color', color);
+                updatePreviewHighlightColor(hid, color);
+                saveState();
+            };
+
+            colors.forEach(color => {
+                const dot = document.createElement('button');
+                dot.type = 'button';
+                dot.className = `color-dot ${color}`;
+                dot.setAttribute('aria-label', `Set ${color} color`);
+                dot.title = color.charAt(0).toUpperCase() + color.slice(1);
+                dot.addEventListener('click', () => applyColor(color));
+                colorPicker.appendChild(dot);
+            });
+            // Apply initial color (from options if provided)
+            const initialColor = options.color || 'yellow';
+            queueMicrotask(() => applyColor(initialColor));
+            
+            // --- Event Listener for Reply Input ---
+            replyInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault(); 
+                    const replyText = replyInput.value.trim();
+                    if (replyText) {
+                        const replyElement = document.createElement('div');
+                        replyElement.className = 'reply-display editable-reply'; // Add editable class
+                        replyElement.textContent = replyText;
+                        
+                        // Add dblclick listener for editing
+                        replyElement.addEventListener('dblclick', handleReplyDblClick);
+                        
+                        repliesContainer.appendChild(replyElement);
+                        replyInput.value = '';
+                        replyInput.style.display = 'none';
+                        saveState();
+                    }
+                }
+            });
+
+            // --- Append all elements ---
+            buttonContainer.appendChild(questionButton);
+            buttonContainer.appendChild(translateButton);
+            buttonContainer.appendChild(deleteButton); // Add delete button
+            buttonContainer.appendChild(colorPicker);  // Add color picker
+
+            listItem.appendChild(textElement);
+            listItem.appendChild(buttonContainer);
+            listItem.appendChild(replyInput);
+            listItem.appendChild(repliesContainer);
+            
+            // Pre-populate replies if provided
+            if (Array.isArray(options.replies)) {
+                options.replies.forEach(rep => {
+                    if (!rep) return;
+                    const replyElement = document.createElement('div');
+                    replyElement.className = 'reply-display editable-reply';
+                    replyElement.textContent = rep;
+                    replyElement.addEventListener('dblclick', handleReplyDblClick);
+                    repliesContainer.appendChild(replyElement);
+                });
+            }
+
+            highlightsList.appendChild(listItem);
+            saveState();
+            return hid;
+        };
+
+        const updatePreview = () => {
+            if (!classicEditor) return; 
+            
+            const editorData = classicEditor.getData();
+            try { localStorage.setItem(EDITOR_KEY, editorData); } catch {}
+            const iframeDoc = previewFrame.contentWindow.document;
+            const iframeWindow = previewFrame.contentWindow;
+
+            iframeDoc.open();
+            iframeDoc.write(`
+                <style>
+                    body { 
+                        font-family: 'Inter', sans-serif; 
+                        line-height: 1.6; 
+                        padding: 1.5rem; 
+                        color: #333;
+                    }
+                    ::selection { background: #ffd966; }
+                    /* Fix for CKEditor list styling issue in preview */
+                    ol { list-style-position: inside; }
+                    ul { list-style-position: inside; }
+                </style>
+            `);
+            iframeDoc.write(editorData);
+            iframeDoc.close();
+            ensurePreviewStyles(iframeDoc);
+            applySavedHighlightsToPreview();
+            
+            iframeDoc.addEventListener('mouseup', (e) => {
+                setTimeout(() => {
+                    const selection = iframeWindow.getSelection();
+                    if (selection && selection.toString().trim()) {
+                        const range = selection.getRangeAt(0);
+                        const rect = range.getBoundingClientRect();
+                        const frameRect = previewFrame.getBoundingClientRect();
+
+                        const top = frameRect.top + rect.bottom;
+                        const left = frameRect.left + rect.right;
+                        
+                        tooltip.style.top = `${top}px`;
+                        tooltip.style.left = `${left}px`;
+                        tooltip.classList.add('visible');
+                    } else {
+                        tooltip.classList.remove('visible');
+                    }
+                }, 10);
+            });
+            iframeDoc.addEventListener('mousedown', () => tooltip.classList.remove('visible'));
+        };
+
+        ClassicEditor
+            .create(document.querySelector('#html-editor'), {
+                toolbar: [ 'heading', '|', 'bold', 'italic', 'link', 'bulletedList', 'numberedList', '|', 'outdent', 'indent', '|', 'blockQuote', 'undo', 'redo' ],
+                list: { properties: { styles: false, startIndex: true, reversed: false } }
+            })
+            .then(editor => {
+                classicEditor = editor;
+                const savedHtml = localStorage.getItem(EDITOR_KEY);
+                if (savedHtml && savedHtml.trim()) {
+                    classicEditor.setData(savedHtml);
+                } else {
+                    classicEditor.setData(`<h1>Welcome!</h1><p>Paste your content here.</p>`);
+                }
+                editor.model.document.on('change:data', updatePreview);
+                updatePreview();
+            })
+            .catch(error => console.error('CKEditor Error:', error));
+
+        appendBtn.addEventListener('click', () => {
+            const previewSelection = previewFrame.contentWindow.getSelection();
+            const selectedText = previewSelection.toString().trim();
+
+            if (selectedText) {
+                const hid = addHighlightToList(selectedText);
+                wrapCurrentPreviewSelection(hid, 'yellow');
+                previewSelection.removeAllRanges(); 
+                saveState();
+            } else {
+                showModal('Please highlight some text in the preview pane first!');
+            }
+        });
+
+        tooltip.addEventListener('click', () => {
+            const previewSelection = previewFrame.contentWindow.getSelection();
+            const selectedText = previewSelection.toString().trim();
+            if (selectedText) {
+                const hid = addHighlightToList(selectedText);
+                wrapCurrentPreviewSelection(hid, 'yellow');
+                previewSelection.removeAllRanges();
+                tooltip.classList.remove('visible');
+                saveState();
+            }
+        });
+
+        copyPreviewBtn.addEventListener('click', () => {
+            const rootNode = previewFrame.contentWindow.document.body;
+
+            if (!rootNode || !rootNode.innerText.trim()) {
+                showModal('Nothing to copy.');
+                return;
+            }
+
+            function convertHtmlToPlainText(node) {
+                let result = '';
+
+                function traverse(currentNode, indentLevel = 0, listContext = []) {
+                    // listContext is an array of objects: { type: 'ol' or 'ul', counter: number }
+
+                    for (const child of currentNode.childNodes) {
+                        if (child.nodeType === Node.TEXT_NODE) {
+                            // Append text content, cleaning up consecutive spaces
+                            const cleanedText = child.textContent.replace(/\s+/g, ' ');
+                            if (result.endsWith(' ') && cleanedText.startsWith(' ')) {
+                                result += cleanedText.substring(1);
+                            } else {
+                                result += cleanedText;
+                            }
+                        } else if (child.nodeType === Node.ELEMENT_NODE) {
+                            const tagName = child.tagName.toLowerCase();
+                            const isBlock = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'blockquote'].includes(tagName);
+                            const indent = '    '.repeat(indentLevel);
+
+                            if (isBlock) {
+                                if (result.length > 0 && !result.endsWith('\n\n')) {
+                                    result = result.trimEnd() + '\n\n';
+                                }
+                                result += indent;
+                                traverse(child, indentLevel, listContext);
+                            } else if (tagName === 'ol') {
+                                if (result.length > 0 && !result.endsWith('\n')) {
+                                   result = result.trimEnd() + '\n';
+                                }
+                                const parentContext = listContext[listContext.length - 1];
+                                const olPrefix = parentContext?.type === 'ol' ? `${parentContext.prefix}${parentContext.counter-1}.` : '';
+                                traverse(child, indentLevel, [...listContext, { type: 'ol', counter: 1, prefix: olPrefix }]);
+                            } else if (tagName === 'ul') {
+                                 if (result.length > 0 && !result.endsWith('\n')) {
+                                   result = result.trimEnd() + '\n';
+                                 }
+                                traverse(child, indentLevel, [...listContext, { type: 'ul' }]);
+                            } else if (tagName === 'li') {
+                                if (result.length > 0 && !result.endsWith('\n')) {
+                                    result = result.trimEnd() + '\n';
+                                }
+                                result += indent;
+                                
+                                const currentList = listContext[listContext.length - 1];
+                                if (currentList) {
+                                    if (currentList.type === 'ol') {
+                                        result += `${currentList.counter}. `;
+                                        currentList.counter++;
+
+                                    } else { // 'ul'
+                                        result += '- ';
+                                    }
+                                }
+                                
+                                let nextIndentLevel = indentLevel + 1; // Default for OL nesting
+                                if (currentList && currentList.type === 'ul') {
+                                    // For ULs, we flatten the indentation level.
+                                    nextIndentLevel = indentLevel;
+                                }
+                                traverse(child, nextIndentLevel, listContext);
+
+                            } else if (tagName === 'br') {
+                                if (!result.endsWith('\n')) {
+                                    result += '\n';
+                                }
+                            } else {
+                                // For inline elements like <strong>, <em>, <span> etc.
+                                traverse(child, indentLevel, listContext);
+                            }
+                        }
+                    }
+                }
+
+                traverse(rootNode);
+                return result.replace(/\n{3,}/g, '\n\n').replace(/ +\n/g, '\n').trim();
+            }
+
+            const textToCopy = convertHtmlToPlainText(rootNode);
+
+            const textArea = document.createElement('textarea');
+            textArea.value = textToCopy;
+            textArea.style.position = 'fixed';
+            textArea.style.top = '-9999px';
+            textArea.style.left = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    const originalText = copyPreviewBtn.innerText;
+                    copyPreviewBtn.innerText = 'Copied!';
+                    setTimeout(() => { copyPreviewBtn.innerText = 'Copy'; }, 2000);
+                } else {
+                     showModal('Could not copy text.');
+                }
+            } catch (err) {
+                console.error('Copy failed: ', err);
+                showModal('Could not copy text to clipboard.');
+            }
+
+            document.body.removeChild(textArea);
+        });
+        
+        // --- Export Functions (Refactored) ---
+        function generateExportText() {
+            let exportText = '';
+            const items = highlightsList.querySelectorAll('.highlight-item');
+
+            if (items.length === 0) {
+                return null; // Return null if nothing to export
+            }
+
+            let itemNumber = 1;
+            items.forEach(item => {
+                const highlight = item.querySelector('.highlight-text').textContent.slice(1, -1);
+                exportText += `${itemNumber}) "${highlight}"\n`;
+
+                const replies = item.querySelectorAll('.reply-display');
+                replies.forEach(reply => {
+                    exportText += `- ${reply.textContent}\n`;
+                });
+                itemNumber++;
+                exportText += '\n';
+            });
+            return exportText;
+        }
+
+        exportBtn.addEventListener('click', () => {
+            const exportText = generateExportText();
+            if (exportText) { // Only proceed if text was generated
+                const exportWindow = window.open('', 'Exported Text');
+                exportWindow.document.write('<pre>' + exportText + '</pre>');
+                exportWindow.document.title = "Your Exported Highlights & Replies";
+            } else {
+                showModal('There are no highlights to export.');
+            }
+        });
+
+        // New listener for the Copy Export button
+        copyExportBtn.addEventListener('click', () => {
+            const exportText = generateExportText();
+            if (!exportText) {
+                showModal('There are no highlights to export.');
+                return; // Modal already shown by helper function
+            }
+
+            const textArea = document.createElement('textarea');
+            textArea.value = exportText;
+            textArea.style.position = 'fixed';
+            textArea.style.top = '-9999px';
+            textArea.style.left = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    const originalText = copyExportBtn.innerText;
+                    copyExportBtn.innerText = 'Copied!';
+                    setTimeout(() => { copyExportBtn.innerText = 'Copy to Clipboard'; }, 2000);
+                } else {
+                     showModal('Could not copy text.');
+                }
+            } catch (err) {
+                console.error('Copy export failed: ', err);
+                showModal('Could not copy text to clipboard.');
+            }
+
+            document.body.removeChild(textArea);
+        });
+
+        // --- New Listener for Clear Button ---
+        clearHighlightsBtn.addEventListener('click', () => {
+            if (highlightsList.children.length === 0) {
+                showModal('There is nothing to clear.');
+                return;
+            }
+            // Use the confirmation modal
+            showModal('Are you sure you want to clear all highlights and replies?', () => {
+                highlightsList.innerHTML = '';
+                const doc = previewFrame.contentWindow?.document;
+                if (doc) {
+                    doc.querySelectorAll('span.mark-highlight').forEach(s => {
+                        const p = s.parentNode;
+                        while (s.firstChild) p.insertBefore(s.firstChild, s);
+                        p.removeChild(s);
+                        p.normalize?.();
+                    });
+                }
+                saveState();
+            });
+        });
+
+        // Restore saved highlights on load
+        (function restoreOnLoad() {
+            const saved = loadState();
+            if (!saved || !saved.length) return;
+            isRestoring = true;
+            try {
+                saved.forEach(item => addHighlightToList(item.text || '', { id: item.id || generateId(), color: item.color || 'yellow', replies: item.replies || [] }));
+            } finally {
+                isRestoring = false;
+            }
+        })();
+
+    </script>
+</body>
+</html>
